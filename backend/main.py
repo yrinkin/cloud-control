@@ -142,6 +142,12 @@ def create_ec2_action(
     return JSONResponse(status_code=status_code, content=payload)
 
 
+@api.get("/security-checks")
+def read_security_checks(settings: Settings = Depends(get_settings)) -> dict:
+    # 요청마다 AWS에서 새로 조회한다. 결과를 캐시하거나 DB에 저장하지 않는다.
+    return AwsService(settings).scan_attached_security_groups()
+
+
 @api.get("/actions")
 def read_actions(db: Session = Depends(get_db)) -> dict:
     rows = db.scalars(

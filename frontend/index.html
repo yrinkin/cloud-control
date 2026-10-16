@@ -10,7 +10,7 @@
   <header class="topbar">
     <h1>Cloud Control</h1>
     <div class="topbar-actions" id="session-actions" hidden>
-      <button id="refresh-btn" type="button">조회</button>
+      <button id="refresh-btn" type="button">전체 조회</button>
       <button id="logout-btn" type="button" class="secondary">로그아웃</button>
     </div>
   </header>
@@ -26,71 +26,127 @@
   </section>
 
   <div id="app-view" hidden>
+    <!-- AWS 로그인 만료(503 AWS_LOGIN_REQUIRED) 안내. 앱 토큰 문제(401)와 구분한다. -->
+    <div id="aws-login-banner" class="status status-error" hidden>
+      <span>AWS 로그인이 만료되었거나 필요합니다. 앱 토큰은 그대로 유효합니다. WSL 터미널에서 <code>aws login --profile lab</code>을 실행한 뒤 다시 조회하세요.</span>
+      <span class="status-code">AWS_LOGIN_REQUIRED</span>
+    </div>
+
     <nav class="tabs" role="tablist">
       <button type="button" role="tab" data-tab="dashboard" aria-selected="true">대시보드</button>
       <button type="button" role="tab" data-tab="ec2" aria-selected="false">EC2</button>
       <button type="button" role="tab" data-tab="s3" aria-selected="false">S3</button>
       <button type="button" role="tab" data-tab="sg" aria-selected="false">보안 그룹</button>
+      <button type="button" role="tab" data-tab="actions" aria-selected="false">실행 이력</button>
+      <button type="button" role="tab" data-tab="check" aria-selected="false">보안 점검</button>
     </nav>
 
     <main>
+      <!-- 대시보드 -->
       <section id="tab-dashboard" class="panel" role="tabpanel">
-        <p class="muted">마지막 조회 시각: <span id="last-updated">아직 조회하지 않음</span></p>
+        <p class="muted">마지막 전체 조회: <span id="last-updated">아직 조회하지 않음</span></p>
         <div id="context-status" class="status"></div>
         <dl id="context-info" class="info" hidden>
           <div><dt>계정</dt><dd id="ctx-account"></dd></div>
           <div><dt>리전</dt><dd id="ctx-region"></dd></div>
           <div><dt>호출자 ARN</dt><dd id="ctx-arn" class="mono"></dd></div>
         </dl>
-        <div class="cards">
-          <div class="card"><span class="card-label">EC2 인스턴스</span><span id="count-ec2" class="card-value">-</span></div>
-          <div class="card"><span class="card-label">S3 버킷</span><span id="count-s3" class="card-value">-</span></div>
-          <div class="card"><span class="card-label">보안 그룹</span><span id="count-sg" class="card-value">-</span></div>
-        </div>
+        <div class="cards" id="summary-cards"></div>
+        <p class="muted small">숫자는 이번 세션에서 실제로 조회한 결과로 계산합니다. 조회에 실패한 항목은 '확인 불가'로 표시합니다.</p>
       </section>
 
+      <!-- EC2 -->
       <section id="tab-ec2" class="panel" role="tabpanel" hidden>
         <div class="toolbar">
-          <span class="muted">EC2 상태와 제어 이력은 자동으로 갱신되지 않습니다.</span>
-          <button id="ec2-refresh-btn" type="button" class="secondary">EC2·이력 새로고침</button>
+          <label class="filter">상태
+            <select id="ec2-filter">
+              <option value="">전체</option>
+              <option value="running">running</option>
+              <option value="stopped">stopped</option>
+              <option value="pending">pending</option>
+              <option value="stopping">stopping</option>
+              <option value="shutting-down">shutting-down</option>
+              <option value="terminated">terminated</option>
+            </select>
+          </label>
+          <span id="ec2-filter-info" class="muted"></span>
+          <button id="ec2-refresh-btn" type="button" class="secondary">EC2 새로고침</button>
         </div>
         <div id="control-notice" class="status"></div>
-        <div class="split">
-          <div>
-            <h2>EC2 현재 상태</h2>
-            <div id="ec2-status" class="status"></div>
-            <div class="table-wrap">
-              <table id="ec2-table" hidden>
-                <thead>
-                  <tr><th>이름</th><th>인스턴스 ID</th><th>상태</th><th>유형</th><th>프라이빗 IP</th><th>퍼블릭 IP</th><th>제어 허용</th><th>작업</th></tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </div>
-          <div>
-            <h2>제어 이력 (최신 50건)</h2>
-            <div id="actions-status" class="status"></div>
-            <div class="table-wrap">
-              <table id="actions-table" hidden>
-                <thead>
-                  <tr><th>요청 시각</th><th>인스턴스</th><th>작업</th><th>이력 상태</th><th>현재 EC2 상태</th><th>메시지</th><th>request_id</th></tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </div>
+        <div id="ec2-status" class="status"></div>
+        <div class="table-wrap">
+          <table id="ec2-table" hidden>
+            <thead>
+              <tr><th>이름</th><th>인스턴스 ID</th><th>상태</th><th>유형</th><th>프라이빗 IP</th><th>퍼블릭 IP</th><th>제어 허용</th><th>작업</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
         </div>
+        <p class="muted small">상태는 자동으로 갱신되지 않습니다. 시작·중지 후에는 'EC2 새로고침'으로 확인하세요.</p>
       </section>
 
+      <!-- S3 -->
       <section id="tab-s3" class="panel" role="tabpanel" hidden>
         <div id="s3-status" class="status"></div>
         <ul id="s3-list" class="list" hidden></ul>
       </section>
 
+      <!-- 보안 그룹 -->
       <section id="tab-sg" class="panel" role="tabpanel" hidden>
+        <p class="muted small">서울 리전의 모든 보안 그룹과 인바운드 규칙입니다. 공개 관리 포트 판정은 '보안 점검' 탭에서 합니다.</p>
         <div id="sg-status" class="status"></div>
         <div id="sg-list" hidden></div>
+      </section>
+
+      <!-- 실행 이력 -->
+      <section id="tab-actions" class="panel" role="tabpanel" hidden>
+        <div class="toolbar">
+          <span class="muted">최근 50건. '현재 EC2 상태'는 마지막 EC2 조회 결과입니다.</span>
+          <button id="actions-refresh-btn" type="button" class="secondary">이력·EC2 새로고침</button>
+        </div>
+        <div id="actions-status" class="status"></div>
+        <div class="table-wrap">
+          <table id="actions-table" hidden>
+            <thead>
+              <tr><th>요청 시각</th><th>인스턴스</th><th>작업</th><th>이력 상태</th><th>현재 EC2 상태</th><th>메시지</th><th>AWS 요청 ID</th><th>request_id</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 보안 점검 -->
+      <section id="tab-check" class="panel" role="tabpanel" hidden>
+        <div class="toolbar">
+          <span class="muted">실제 EC2(pending·running·stopping·stopped)의 ENI에 연결된 보안 그룹에서 공개(0.0.0.0/0, ::/0) TCP 22·3389 또는 전체 프로토콜 인바운드 규칙을 찾습니다.</span>
+          <button id="check-run-btn" type="button">점검 실행</button>
+        </div>
+        <div id="check-status" class="status"></div>
+        <div id="check-result" hidden>
+          <dl class="info">
+            <div><dt>점검 시각</dt><dd id="check-time"></dd></div>
+            <div><dt>점검 범위</dt><dd id="check-scope"></dd></div>
+            <div><dt>주의</dt><dd>규칙 기반 점검이며 실제 침해 여부 판정이 아님. 실제 접속 가능 여부는 공인 IP·라우팅·NACL·OS 방화벽·서비스 상태에도 달려 있으며, 여러 CIDR 조합이나 prefix list를 통한 공개는 판정하지 않습니다.</dd></div>
+          </dl>
+          <div id="check-summary" class="status"></div>
+          <div class="table-wrap">
+            <table id="check-findings" hidden>
+              <thead>
+                <tr><th>판정</th><th>인스턴스 이름</th><th>인스턴스 ID</th><th>상태</th><th>ENI</th><th>그룹 ID</th><th>그룹 이름</th><th>IP 버전</th><th>CIDR</th><th>프로토콜</th><th>범위</th><th>관리 포트</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <h2 class="section-title">점검한 보안 그룹</h2>
+          <div class="table-wrap">
+            <table id="check-groups" hidden>
+              <thead>
+                <tr><th>그룹 ID</th><th>그룹 이름</th><th>검토 필요 규칙</th><th>인스턴스 이름</th><th>인스턴스 ID</th><th>상태</th><th>ENI</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
       </section>
     </main>
   </div>

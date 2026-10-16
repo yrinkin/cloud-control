@@ -1,5 +1,7 @@
 """Boto3 조회·제어 client. AWS 예외를 AwsServiceError(status, code, message)로 바꾼다."""
 
+from datetime import datetime, timezone
+
 import boto3
 from botocore.config import Config
 from botocore.exceptions import (
@@ -19,6 +21,12 @@ from botocore.exceptions import (
 )
 
 from backend.config import Settings
+from backend.security_check import inspect_group
+
+# 점검 대상: 이 상태의 EC2에 실제로 연결된 보안 그룹만 본다. 제어 허용 목록과는 무관하다.
+SCAN_INSTANCE_STATES = ["pending", "running", "stopping", "stopped"]
+SG_BATCH_SIZE = 100
+GROUP_NOT_FOUND_CODES = {"InvalidGroup.NotFound", "InvalidGroupId.NotFound"}
 
 BOTO_CONFIG = Config(
     connect_timeout=5,
@@ -214,5 +222,109 @@ class AwsService:
                 for page in paginator.paginate()
                 for sg in page.get("SecurityGroups", [])
             ]
+
+        return self._call(run)
+
+    def scan_attached_security_groups(self) -> dict:
+        """실제 EC2의 모든 ENI에 연결된 보안 그룹만 조회해 inspect_group으로 판정한다.
+
+        DescribeInstances, DescribeSecurityGroups 조회만 사용한다.
+        일부라도 확인하지 못하면 503 AWS_SCAN_INCOMPLETE로 실패시키고 '발견 없음'으로 바꾸지 않는다.
+        """
+        self.get_context()  # EXPECTED_ACCOUNT_ID 검증 (불일치 시 403)
+        ec2 = self._client("ec2")
+
+        def incomplete(message: str) -> AwsServiceError:
+            return AwsServiceError(503, "AWS_SCAN_INCOMPLETE", f"{message} 점검 결과를 확정할 수 없으니 다시 조회하세요.")
+
+        def collect_attachments():
+            attachments: dict[str, dict[tuple[str, str], dict]] = {}
+            instance_ids: set[str] = set()
+            paginator = ec2.get_paginator("describe_instances")
+            pages = paginator.paginate(Filters=[{"Name": "instance-state-name", "Values": SCAN_INSTANCE_STATES}])
+            for page in pages:
+                for reservation in page.get("Reservations", []):
+                    for inst in reservation.get("Instances", []):
+                        instance_id = inst.get("InstanceId")
+                        enis = inst.get("NetworkInterfaces")
+                        # 이 상태의 인스턴스는 ENI가 최소 1개 있어야 한다. 없으면 응답 누락으로 본다.
+                        if not instance_id or not enis:
+                            raise incomplete("인스턴스의 네트워크 인터페이스 정보가 응답에 없습니다.")
+                        instance_ids.add(instance_id)
+                        tags = {t["Key"]: t["Value"] for t in inst.get("Tags", [])}
+                        name = tags.get("Name") or instance_id
+                        state = inst.get("State", {}).get("Name")
+                        for eni in enis:
+                            eni_id = eni.get("NetworkInterfaceId")
+                            groups = eni.get("Groups")
+                            if not eni_id or not groups:
+                                raise incomplete("네트워크 인터페이스의 보안 그룹 정보가 응답에 없습니다.")
+                            for group in groups:
+                                group_id = group.get("GroupId")
+                                if not group_id:
+                                    raise incomplete("보안 그룹 ID가 응답에 없습니다.")
+                                # (instance_id, network_interface_id, group_id) 기준으로 중복 제거
+                                attachments.setdefault(group_id, {})[(instance_id, eni_id)] = {
+                                    "instance_id": instance_id,
+                                    "instance_name": name,
+                                    "state": state,
+                                    "network_interface_id": eni_id,
+                                }
+            return len(instance_ids), attachments
+
+        def describe_groups(group_ids: list[str]) -> dict[str, dict]:
+            found: dict[str, dict] = {}
+            for i in range(0, len(group_ids), SG_BATCH_SIZE):
+                batch = group_ids[i : i + SG_BATCH_SIZE]
+                # 빈 GroupIds는 '전체 보안 그룹 조회'가 되므로 절대 보내지 않는다.
+                if not batch:
+                    raise incomplete("조회할 보안 그룹 ID 묶음이 비어 있습니다.")
+                try:
+                    resp = ec2.describe_security_groups(GroupIds=batch)
+                except ClientError as exc:
+                    if exc.response.get("Error", {}).get("Code") in GROUP_NOT_FOUND_CODES:
+                        raise incomplete("조회 중 일부 보안 그룹을 찾을 수 없습니다(삭제 등).") from exc
+                    raise
+                returned = {sg["GroupId"]: sg for sg in resp.get("SecurityGroups", [])}
+                if set(returned) != set(batch):
+                    raise incomplete("요청한 보안 그룹과 반환된 보안 그룹이 일치하지 않습니다.")
+                found.update(returned)
+            return found
+
+        def result(instance_count: int, checked_groups: list[dict], findings: list[dict]) -> dict:
+            return {
+                "findings": findings,
+                "checked_groups": checked_groups,
+                "checked_instance_count": instance_count,
+                "checked_group_count": len({g["group_id"] for g in checked_groups}),
+                "finding_count": len(findings),
+                "checked_at": datetime.now(timezone.utc).isoformat(),
+            }
+
+        def run():
+            instance_count, attachments = collect_attachments()
+            group_ids = sorted(attachments)
+            if not group_ids:
+                # 대상 EC2에 연결된 그룹이 없다. 보안 그룹 조회를 호출하지 않는다.
+                return result(instance_count, [], [])
+
+            described = describe_groups(group_ids)
+            checked_groups, findings = [], []
+            for group_id in group_ids:
+                connections = sorted(
+                    attachments[group_id].values(), key=lambda a: (a["instance_id"], a["network_interface_id"])
+                )
+                # 원본 GroupId/GroupName/IpPermissions 구조 그대로, 그룹마다 한 번만 판정한다.
+                # finding은 규칙·공개 CIDR 조합 단위이며 연결 인스턴스 수만큼 늘리지 않는다.
+                for finding in inspect_group(described[group_id]):
+                    findings.append({**finding, "connections": connections})
+                checked_groups.append(
+                    {
+                        "group_id": group_id,
+                        "group_name": described[group_id].get("GroupName", ""),
+                        "connections": connections,
+                    }
+                )
+            return result(instance_count, checked_groups, findings)
 
         return self._call(run)

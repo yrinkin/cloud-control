@@ -1,0 +1,166 @@
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --border: #dde1e6;
+  --text: #1d232b;
+  --muted: #69727d;
+  --accent: #2463c6;
+  --error-bg: #fdecec;
+  --error-text: #a3261f;
+  --empty-bg: #eef1f4;
+  --loading-bg: #eaf1fc;
+  font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans KR", sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; padding: 0 16px 32px; max-width: 1100px; margin-inline: auto; }
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding-block: 20px 12px;
+}
+.topbar h1 { margin: 0; font-size: 1.4rem; }
+.panel > p.muted { margin: 0 0 12px; }
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+#refresh-btn {
+  padding: 6px 18px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+}
+#refresh-btn:disabled { opacity: 0.6; cursor: progress; }
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.tabs button {
+  padding: 8px 16px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+}
+.tabs button[aria-selected="true"] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.panel { padding-top: 20px; }
+
+.status:empty { display: none; }
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+.status-loading { background: var(--loading-bg); color: var(--accent); }
+.status-empty { background: var(--empty-bg); color: var(--muted); }
+.status-error { background: var(--error-bg); color: var(--error-text); }
+.status-code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+}
+
+.info {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 20px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.info div { display: flex; flex-wrap: wrap; gap: 12px; }
+.info dt { width: 90px; color: var(--muted); }
+.info dd { margin: 0; overflow-wrap: anywhere; }
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.card-label { color: var(--muted); font-size: 0.9rem; }
+.card-value { font-size: 1.8rem; font-weight: 600; }
+.card-error { color: var(--error-text); font-size: 1.2rem; }
+
+.table-wrap { overflow-x: auto; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+th, td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+th { background: var(--empty-bg); font-weight: 600; font-size: 0.9rem; }
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.list li { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.list li:last-child { border-bottom: 0; }
+
+.sg {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.sg-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; margin-bottom: 8px; }
+.sg p { margin: 0; }
+
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  background: var(--empty-bg);
+}
+.state-running { background: #e3f4e8; color: #1c6b35; }
+.state-stopped { background: #f1f1f1; color: #555; }
+.state-pending, .state-stopping { background: #fff4d6; color: #7a5a00; }
+.state-terminated, .state-shutting-down { background: var(--error-bg); color: var(--error-text); }
+
+.mono { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 0.9rem; }
+.muted { color: var(--muted); }

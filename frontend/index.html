@@ -9,54 +9,109 @@
 <body>
   <header class="topbar">
     <h1>Cloud Control</h1>
-    <button id="refresh-btn" type="button">조회</button>
+    <div class="topbar-actions" id="session-actions" hidden>
+      <button id="refresh-btn" type="button">조회</button>
+      <button id="logout-btn" type="button" class="secondary">로그아웃</button>
+    </div>
   </header>
 
-  <nav class="tabs" role="tablist">
-    <button type="button" role="tab" data-tab="dashboard" aria-selected="true">대시보드</button>
-    <button type="button" role="tab" data-tab="ec2" aria-selected="false">EC2</button>
-    <button type="button" role="tab" data-tab="s3" aria-selected="false">S3</button>
-    <button type="button" role="tab" data-tab="sg" aria-selected="false">보안 그룹</button>
-  </nav>
+  <!-- 토큰 입력 화면. input에 name이 없어 폼이 제출돼도 URL에 값이 실리지 않는다. -->
+  <section id="login-view" class="login">
+    <form id="login-form" class="login-box" method="post" action="#" autocomplete="off">
+      <label for="token-input">앱 토큰</label>
+      <input id="token-input" type="password" autocomplete="off" spellcheck="false" required>
+      <button id="connect-btn" type="submit">연결</button>
+      <div id="login-status" class="status"></div>
+    </form>
+  </section>
 
-  <main>
-    <section id="tab-dashboard" class="panel" role="tabpanel">
-      <p class="muted">마지막 조회 시각: <span id="last-updated">아직 조회하지 않음</span></p>
-      <div id="context-status" class="status"></div>
-      <dl id="context-info" class="info" hidden>
-        <div><dt>계정</dt><dd id="ctx-account"></dd></div>
-        <div><dt>리전</dt><dd id="ctx-region"></dd></div>
-        <div><dt>호출자 ARN</dt><dd id="ctx-arn" class="mono"></dd></div>
+  <div id="app-view" hidden>
+    <nav class="tabs" role="tablist">
+      <button type="button" role="tab" data-tab="dashboard" aria-selected="true">대시보드</button>
+      <button type="button" role="tab" data-tab="ec2" aria-selected="false">EC2</button>
+      <button type="button" role="tab" data-tab="s3" aria-selected="false">S3</button>
+      <button type="button" role="tab" data-tab="sg" aria-selected="false">보안 그룹</button>
+    </nav>
+
+    <main>
+      <section id="tab-dashboard" class="panel" role="tabpanel">
+        <p class="muted">마지막 조회 시각: <span id="last-updated">아직 조회하지 않음</span></p>
+        <div id="context-status" class="status"></div>
+        <dl id="context-info" class="info" hidden>
+          <div><dt>계정</dt><dd id="ctx-account"></dd></div>
+          <div><dt>리전</dt><dd id="ctx-region"></dd></div>
+          <div><dt>호출자 ARN</dt><dd id="ctx-arn" class="mono"></dd></div>
+        </dl>
+        <div class="cards">
+          <div class="card"><span class="card-label">EC2 인스턴스</span><span id="count-ec2" class="card-value">-</span></div>
+          <div class="card"><span class="card-label">S3 버킷</span><span id="count-s3" class="card-value">-</span></div>
+          <div class="card"><span class="card-label">보안 그룹</span><span id="count-sg" class="card-value">-</span></div>
+        </div>
+      </section>
+
+      <section id="tab-ec2" class="panel" role="tabpanel" hidden>
+        <div class="toolbar">
+          <span class="muted">EC2 상태와 제어 이력은 자동으로 갱신되지 않습니다.</span>
+          <button id="ec2-refresh-btn" type="button" class="secondary">EC2·이력 새로고침</button>
+        </div>
+        <div id="control-notice" class="status"></div>
+        <div class="split">
+          <div>
+            <h2>EC2 현재 상태</h2>
+            <div id="ec2-status" class="status"></div>
+            <div class="table-wrap">
+              <table id="ec2-table" hidden>
+                <thead>
+                  <tr><th>이름</th><th>인스턴스 ID</th><th>상태</th><th>유형</th><th>프라이빗 IP</th><th>퍼블릭 IP</th><th>제어 허용</th><th>작업</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <h2>제어 이력 (최신 50건)</h2>
+            <div id="actions-status" class="status"></div>
+            <div class="table-wrap">
+              <table id="actions-table" hidden>
+                <thead>
+                  <tr><th>요청 시각</th><th>인스턴스</th><th>작업</th><th>이력 상태</th><th>현재 EC2 상태</th><th>메시지</th><th>request_id</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-s3" class="panel" role="tabpanel" hidden>
+        <div id="s3-status" class="status"></div>
+        <ul id="s3-list" class="list" hidden></ul>
+      </section>
+
+      <section id="tab-sg" class="panel" role="tabpanel" hidden>
+        <div id="sg-status" class="status"></div>
+        <div id="sg-list" hidden></div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="confirm-dialog">
+    <form method="dialog" class="confirm-box">
+      <h2>EC2 제어 확인</h2>
+      <dl class="info">
+        <div><dt>계정</dt><dd id="confirm-account"></dd></div>
+        <div><dt>리전</dt><dd id="confirm-region"></dd></div>
+        <div><dt>이름</dt><dd id="confirm-name"></dd></div>
+        <div><dt>인스턴스 ID</dt><dd id="confirm-id" class="mono"></dd></div>
+        <div><dt>작업</dt><dd id="confirm-action" class="confirm-action"></dd></div>
       </dl>
-      <div class="cards">
-        <div class="card"><span class="card-label">EC2 인스턴스</span><span id="count-ec2" class="card-value">-</span></div>
-        <div class="card"><span class="card-label">S3 버킷</span><span id="count-s3" class="card-value">-</span></div>
-        <div class="card"><span class="card-label">보안 그룹</span><span id="count-sg" class="card-value">-</span></div>
+      <p id="confirm-resend" class="muted" hidden>이전 요청의 응답을 받지 못했습니다. 같은 request_id로 다시 보냅니다.</p>
+      <div class="confirm-buttons">
+        <button type="submit" value="cancel" class="secondary">취소</button>
+        <button type="submit" value="approve" id="confirm-approve">승인</button>
       </div>
-    </section>
-
-    <section id="tab-ec2" class="panel" role="tabpanel" hidden>
-      <div id="ec2-status" class="status"></div>
-      <div class="table-wrap">
-        <table id="ec2-table" hidden>
-          <thead>
-            <tr><th>이름</th><th>인스턴스 ID</th><th>상태</th><th>유형</th><th>프라이빗 IP</th><th>퍼블릭 IP</th></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </section>
-
-    <section id="tab-s3" class="panel" role="tabpanel" hidden>
-      <div id="s3-status" class="status"></div>
-      <ul id="s3-list" class="list" hidden></ul>
-    </section>
-
-    <section id="tab-sg" class="panel" role="tabpanel" hidden>
-      <div id="sg-status" class="status"></div>
-      <div id="sg-list" hidden></div>
-    </section>
-  </main>
+    </form>
+  </dialog>
 
   <script src="app.js"></script>
 </body>

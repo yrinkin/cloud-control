@@ -26,6 +26,44 @@ body { margin: 0; padding: 0 16px 32px; max-width: 1100px; margin-inline: auto; 
   padding-block: 20px 12px;
 }
 .topbar h1 { margin: 0; font-size: 1.4rem; }
+.topbar-actions { display: flex; gap: 8px; }
+.topbar-actions[hidden] { display: none; }
+button.secondary {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.login { display: flex; justify-content: center; padding-top: 48px; }
+.login-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 380px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.login-box label { font-weight: 600; }
+.login-box input {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+#connect-btn {
+  padding: 8px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+}
+#connect-btn:disabled { opacity: 0.6; cursor: progress; }
+.login-box .status { margin: 0; }
 .panel > p.muted { margin: 0 0 12px; }
 
 button {
@@ -157,6 +195,7 @@ th { background: var(--empty-bg); font-weight: 600; font-size: 0.9rem; }
   font-size: 0.85rem;
   background: var(--empty-bg);
 }
+.allowed { background: #e4ecfb; color: var(--accent); }
 .state-running { background: #e3f4e8; color: #1c6b35; }
 .state-stopped { background: #f1f1f1; color: #555; }
 .state-pending, .state-stopping { background: #fff4d6; color: #7a5a00; }
@@ -164,3 +203,60 @@ th { background: var(--empty-bg); font-weight: 600; font-size: 0.9rem; }
 
 .mono { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 0.9rem; }
 .muted { color: var(--muted); }
+
+/* ---------- EC2 제어 ---------- */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
+  gap: 20px;
+  align-items: start;
+}
+.split h2, .confirm-box h2 { font-size: 1.05rem; margin: 0 0 10px; }
+.status-success { background: #e3f4e8; color: #1c6b35; }
+.status button { margin-left: auto; }
+
+.actions-cell { display: flex; gap: 6px; align-items: center; }
+.actions-cell button, .status button {
+  padding: 3px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.actions-cell button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+.actions-cell button.danger { border-color: var(--error-text); background: var(--error-text); color: #fff; }
+.actions-cell button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.action-REQUESTED { background: #fff4d6; color: #7a5a00; }
+.action-ACCEPTED { background: #e3f4e8; color: #1c6b35; }
+.action-FAILED { background: var(--error-bg); color: var(--error-text); }
+.action-UNKNOWN { background: #ffe7d1; color: #8a3c00; }
+
+.small { font-size: 0.8rem; }
+td.wrap { white-space: normal; min-width: 160px; }
+
+#confirm-dialog {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0;
+  width: min(92vw, 440px);
+}
+#confirm-dialog::backdrop { background: rgb(0 0 0 / 0.35); }
+.confirm-box { padding: 20px; }
+.confirm-box .info { margin-bottom: 12px; }
+.confirm-action { font-weight: 700; }
+.confirm-buttons { display: flex; justify-content: flex-end; gap: 8px; }
+#confirm-approve {
+  padding: 6px 18px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+}

@@ -1,4 +1,4 @@
-"""Boto3 조회 로직. AWS 예외를 AwsServiceError(status, code, message)로 바꾼다."""
+"""Boto3 조회·제어 client. AWS 예외를 AwsServiceError(status, code, message)로 바꾼다."""
 
 import boto3
 from botocore.config import Config
@@ -24,6 +24,12 @@ BOTO_CONFIG = Config(
     connect_timeout=5,
     read_timeout=15,
     retries={"max_attempts": 2, "mode": "standard"},
+)
+# 변경(시작·중지)용: 자동 재시도 없이 한 번만 보낸다. 재전송 판단은 request_id 이력으로 한다.
+CONTROL_CONFIG = Config(
+    connect_timeout=5,
+    read_timeout=10,
+    retries={"total_max_attempts": 1, "mode": "standard"},
 )
 
 ACCESS_DENIED_CODES = {
@@ -71,9 +77,13 @@ LOGIN_REQUIRED = (
 CONNECTION_ERROR = (503, "AWS_CONNECTION_ERROR", "AWS와 통신하지 못했습니다. 네트워크를 확인하고 다시 시도하세요.")
 
 
-def _translate(exc: Exception) -> AwsServiceError:
+def translate_aws_error(exc: Exception) -> AwsServiceError:
     if isinstance(exc, ClientError):
         code = exc.response.get("Error", {}).get("Code", "")
+        if code.startswith("InvalidInstanceID"):
+            return AwsServiceError(404, "INSTANCE_NOT_FOUND", "해당 EC2 인스턴스를 찾을 수 없습니다.")
+        if code == "IncorrectInstanceState":
+            return AwsServiceError(409, "INVALID_STATE", "현재 인스턴스 상태에서는 이 작업을 할 수 없습니다.")
         if code in ACCESS_DENIED_CODES:
             return AwsServiceError(*ACCESS_DENIED)
         if code in LOGIN_REQUIRED_CODES:
@@ -88,6 +98,21 @@ def _translate(exc: Exception) -> AwsServiceError:
     return AwsServiceError(502, "AWS_API_ERROR", "AWS 요청 처리 중 오류가 발생했습니다.")
 
 
+def is_controllable(settings: Settings, instance_id: str) -> bool:
+    """허용 목록은 서버 설정에서만 읽는다. 목록이 비어 있으면 어떤 인스턴스도 제어할 수 없다."""
+    return instance_id in settings.allowed_instance_ids
+
+
+def ensure_controllable(settings: Settings, instance_id: str) -> None:
+    """시작·중지 전에 호출한다. 허용 목록 밖이면 AWS를 호출하기 전에 403으로 차단한다."""
+    if not isinstance(instance_id, str) or not is_controllable(settings, instance_id):
+        raise AwsServiceError(
+            403,
+            "INSTANCE_NOT_ALLOWED",
+            "이 인스턴스는 서버의 제어 허용 목록(ALLOWED_INSTANCE_IDS)에 없습니다.",
+        )
+
+
 class AwsService:
     """요청마다 새로 만든다. 재로그인한 자격증명을 서버 재시작 없이 반영하기 위함."""
 
@@ -99,7 +124,7 @@ class AwsService:
                 region_name=settings.aws_region,
             )
         except (BotoCoreError, ClientError) as exc:
-            raise _translate(exc) from exc
+            raise translate_aws_error(exc) from exc
 
     def _client(self, name: str):
         return self.session.client(name, config=BOTO_CONFIG)
@@ -108,7 +133,25 @@ class AwsService:
         try:
             return fn()
         except (BotoCoreError, ClientError) as exc:
-            raise _translate(exc) from exc
+            raise translate_aws_error(exc) from exc
+
+    def control_client(self):
+        """시작·중지 전용 EC2 client. 자동 재시도하지 않는다."""
+        try:
+            return self.session.client("ec2", config=CONTROL_CONFIG)
+        except (BotoCoreError, ClientError) as exc:
+            raise translate_aws_error(exc) from exc
+
+    def get_instance_state(self, instance_id: str) -> str:
+        def run():
+            resp = self._client("ec2").describe_instances(InstanceIds=[instance_id])
+            for reservation in resp.get("Reservations", []):
+                for inst in reservation.get("Instances", []):
+                    if inst.get("InstanceId") == instance_id:
+                        return inst.get("State", {}).get("Name", "unknown")
+            raise AwsServiceError(404, "INSTANCE_NOT_FOUND", "해당 EC2 인스턴스를 찾을 수 없습니다.")
+
+        return self._call(run)
 
     def get_context(self) -> dict:
         identity = self._call(lambda: self._client("sts").get_caller_identity())
@@ -141,6 +184,7 @@ class AwsService:
                                 "instance_type": inst.get("InstanceType"),
                                 "private_ip": inst.get("PrivateIpAddress"),
                                 "public_ip": inst.get("PublicIpAddress"),
+                                "controllable": is_controllable(self.settings, inst["InstanceId"]),
                             }
                         )
             return items
